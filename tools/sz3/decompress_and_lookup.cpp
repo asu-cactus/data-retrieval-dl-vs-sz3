@@ -1,106 +1,182 @@
 #include <SZ3/api/sz.hpp>
-#include <vector>
 
-template <class T>
-void compress(char *inPath, char *cmpPath, SZ::Config conf) {
-    T *data = new T[conf.num];
-    SZ::readfile<T>(inPath, conf.num, data);
-
-    size_t outSize;
-    SZ::Timer timer(true);
-    char *bytes = SZ_compress<T>(conf, data, outSize);
-    double compress_time = timer.stop();
-
-    char outputFilePath[1024];
-    if (cmpPath == nullptr) {
-        snprintf(outputFilePath, 1024, "%s.sz", inPath);
-    } else {
-        strcpy(outputFilePath, cmpPath);
-    }
-    SZ::writefile(outputFilePath, bytes, outSize);
-
-    printf("compression ratio = %.2f \n", conf.num * 1.0 * sizeof(T) / outSize);
-    printf("compression time = %f\n", compress_time);
-    printf("compressed data file = %s\n", outputFilePath);
-
-    delete[] data;
-    delete[] bytes;
-}
+constexpr int NUM_PARTITION = 10;
+constexpr int NUM_COL = 5;
+constexpr int PARTITION_SIZE = 200000;
+const std::vector<int> index_start = {0, 200000, 400000, 600000, 800000, 1000000, 1200000, 1400000, 1600000, 1800000};
+const std::string cmpFileDir = "../../../dl-retrieval/outputs/compressed_files/";
+const std::string indiceDir = "../../../dl-retrieval/outputs/indices/";
+std::vector<std::string> colNames = {"dst", "hist", "enumber", "etime", "rnumber"};
 
 template <class T>
 T *decompress(const char *cmpPath, SZ::Config conf) {
     size_t cmpSize;
     auto cmpData = SZ::readfile<char>(cmpPath, cmpSize);
 
-    SZ::Timer timer(true);
+    // SZ::Timer timer(true);
     T *decData = SZ_decompress<T>(conf, cmpData.get(), cmpSize);
-    double compress_time = timer.stop();
+    // double compress_time = timer.stop();
 
-    printf("compression ratio = %f\n", conf.num * sizeof(T) * 1.0 / cmpSize);
-    printf("decompression time = %f seconds.\n", compress_time);
+    // printf("compression ratio = %f\n", conf.num * sizeof(T) * 1.0 / cmpSize);
+    // printf("decompression time = %f seconds.\n", compress_time);
     return decData;
 }
 
-std::pair<std::vector<char *>, std::vector<std::vector<int>>> get_partitions_and_ids(std::vector<int> &all_ids) {
-    std::vector<char *> partitionFileNames = {"partition1", "partition2", "partition3"};
-    std::vector<std::vector<int>> partitionIds = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
-    return std::make_pair(partitionFileNames, partitionIds);
+int binary_search_find_index(std::vector<int> v, int data) {
+    int start = 0;
+    int end = v.size() - 1;
+    while (start <= end) {
+        int mid = (start + end) / 2;
+        if (v[mid] == data) {
+            return mid;
+        } else if (v[mid] < data) {
+            start = mid + 1;
+        } else {
+            end = mid - 1;
+        }
+    }
+    return -1; // Not found
 }
 
-float *retrieve(const char *cmpPath, std::vector<int> &ids, SZ::Config &conf) {
-    // Get all partion file names
+std::pair<std::vector<int>, std::vector<int>> get_partitions_and_ids(std::vector<int> &all_ids) {
 
-    // For each partition file, decompress it and look up the data
+    std::vector<int> partitionIds;
+    std::vector<int> partitionOffsets;
+    partitionIds.reserve(all_ids.size());
+    partitionOffsets.reserve(all_ids.size());
+    // Find which partition each id belongs to
+    for (int id : all_ids) {
+        int partitionId = binary_search_find_index(index_start, 0);
+        partitionIds.push_back(partitionId);
+        // Generate integer array in range [start, end)
+        int start = partitionId * 20000;
+        std::vector<int> indexPartition(PARTITION_SIZE);
+        std::iota(indexPartition.begin(), indexPartition.end(), start);
+        // Find the offset of the id in the partition
+        int offset = binary_search_find_index(indexPartition, id);
+        partitionOffsets.push_back(offset);
+    }
 
+    // // Lookup id in which partition
+    //
+    // for (int i = 0; i < index_start.size(), ++i) {
+    //     int start = index_start[i];
+    //     int end = index_start[i + 1];
+    //     for (int j = start; j < end; ++j) {
+    //         partitionIds[j] = i;
+    //     }
+    // }
+
+    return std::make_pair(partitionIds, partitionOffsets);
+}
+
+float *retrieve(const char *cmpPath, std::vector<int> &offsets, SZ::Config &conf) {
+    // Decompress data
     float *decData = decompress<float>(cmpPath, conf);
 
-    return decData;
-}
-
-template <class T>
-size_t count_elements_in_vector_of_vector(std::vector<std::vector<T>> &v) {
-    size_t count = 0;
-    for (auto &sub : v) {
-        count += sub.size();
+    // Look up ids from decData using binary search
+    float *results = new float[offsets.size()];
+    for (int i = 0; i < offsets.size(); i++) {
+        results[i] = decData[offsets[i]];
     }
-    return count;
+    return results;
 }
 
-int main() {
+float retrieve_single(const char *cmpPath, int offset, SZ::Config &conf) {
+    // Decompress data
+    float *decData = decompress<float>(cmpPath, conf);
+
+    // Look up ids from decData using binary search
+    return decData[offset];
+}
+
+std::vector<int> load_indices(const char *path) {
+    std::ifstream file(path);
+    std::string str;
+    std::vector<int> indices;
+    while (std::getline(file, str)) {
+        indices.push_back(std::stoi(str));
+    }
+
+    return indices;
+}
+
+void upper_bound(
+    std::vector<int> &partitions,
+    std::vector<int> &partitionOffsets,
+    std::vector<std::string> &colNames,
+    SZ::Config &conf) {
+    // For each partition file, decompress it and look up the data, then merge the results
+    for (int i = 0; i < partitions.size(); i++) {
+        // Get offsets to query for this partition
+        int offset = partitionOffsets[i];
+        int partitionID = partitions[i];
+        // Decompress and look up data for each column
+        float row[NUM_COL];
+        for (int col = 0; col < NUM_COL; ++col) {
+            std::string colName = colNames[col];
+            int start = index_start[partitionID];
+            int end = start + PARTITION_SIZE;
+            std::string partionName = cmpFileDir + colName + "-" + std::to_string(start) + "-" + std::to_string(end) + ".sz";
+            row[col] = retrieve_single(partionName.c_str(), offset, conf);
+        }
+    }
+}
+
+void lower_bound(
+    std::vector<int> &partitions,
+    std::vector<int> &partitionOffsets,
+    std::vector<std::string> &colNames,
+    SZ::Config &conf) {
+    // For lower bound, we assume all ids are in the 1st partition
+    int partitionID = partitions[0];
+    std::vector<float *> results(NUM_COL);
+    // Decompress and look up data for each column
+    for (int col = 0; col < NUM_COL; ++col) {
+        std::string colName = colNames[col];
+        int start = index_start[partitionID];
+        int end = start + PARTITION_SIZE;
+        std::string partionName = cmpFileDir + colName + "-" + std::to_string(start) + "-" + std::to_string(end) + ".sz";
+        float *colValues = retrieve(partionName.c_str(), partitionOffsets, conf);
+        results[col] = colValues;
+    }
+    // Free memory for results
+    for (int col = 0; col < NUM_COL; ++col) {
+        delete[] results[col];
+    }
+}
+
+int main(int argc, char *argv[]) {
+    std::string indiceFile;
+    bool isUpperBound = false;
+    if (!strcmp(argv[1], "upper")) {
+        isUpperBound = true;
+        indiceFile = "upper_bound.txt";
+    } else {
+        indiceFile = "lower_bound.txt";
+    }
+
+    // Get configurations
+    constexpr size_t dims[1] = {PARTITION_SIZE};
+    SZ::Config conf({dims[0]});
+    conf.cmprAlgo = SZ::ALGO_INTERP_LORENZO;
+    conf.errorBoundMode = SZ::EB_REL; // refer to def.hpp for all supported error bound mode
+    conf.relErrorBound = 1E-4;        // rel error bound 1e-4
+
+    // Load indices
+    std::vector<int> all_ids = load_indices((indiceDir + indiceFile).c_str());
+
     // Start timer
     SZ::Timer timer(true);
 
-    // Get configurations
-    std::vector<size_t> dims({100, 200, 300});
-    SZ::Config conf({dims[0], dims[1], dims[2]});
-    conf.cmprAlgo = SZ::ALGO_INTERP_LORENZO;
-    conf.errorBoundMode = SZ::EB_REL; // refer to def.hpp for all supported error bound mode
-    conf.absErrorBound = 1E-3;        // absolute error bound 1e-3
-
-    // Column names
-    const std::string colNames[5] = {"dst", "enumber", "etime", "rnumber"};
-
-    // All ids to query
-    std::vector<int> all_ids({1, 2, 3, 4, 5, 6, 7, 8, 9});
     // Get partition file names and ids
-    auto [partitions, partitionIds] = get_partitions_and_ids(all_ids);
+    auto [partitions, partitionOffsets] = get_partitions_and_ids(all_ids);
 
-    // For each partition file, decompress it and look up the data, then merge the results
-    size_t n_ele = count_elements_in_vector_of_vector(partitionIds);
-    std::vector<float> results;
-    results.reserve(n_ele);
-    for (int i = 0; i < partitions.size(); i++) {
-        // Get ids to query for this partition
-        std::vector<int> ids = partitionIds[i];
-        // Decompress and look up data
-        for (auto colName : colNames) {
-            std::string partionName = colName + "_" + partitions[i];
-            float *decData = retrieve(partionName.c_str(), ids, conf);
-            // Merge float array decData to std::vector<float> results
-            results.insert(results.end(), decData, decData + ids.size());
-            // Free decData
-            delete[] decData;
-        }
+    // Run query
+    if (isUpperBound) {
+        upper_bound(partitions, partitionOffsets, colNames, conf);
+    } else {
+        lower_bound(partitions, partitionOffsets, colNames, conf);
     }
     // Stop timer and measure overall retrieval time
     double compress_time = timer.stop();
