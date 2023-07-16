@@ -39,7 +39,6 @@ int binary_search_find_index(std::vector<int> v, int data) {
 }
 
 std::pair<std::vector<int>, std::vector<int>> get_partitions_and_ids(std::vector<int> &all_ids) {
-
     std::vector<int> partitionIds;
     std::vector<int> partitionOffsets;
     partitionIds.reserve(all_ids.size());
@@ -56,38 +55,44 @@ std::pair<std::vector<int>, std::vector<int>> get_partitions_and_ids(std::vector
         int offset = binary_search_find_index(indexPartition, id);
         partitionOffsets.push_back(offset);
     }
-
-    // // Lookup id in which partition
-    //
-    // for (int i = 0; i < index_start.size(), ++i) {
-    //     int start = index_start[i];
-    //     int end = index_start[i + 1];
-    //     for (int j = start; j < end; ++j) {
-    //         partitionIds[j] = i;
-    //     }
-    // }
-
     return std::make_pair(partitionIds, partitionOffsets);
 }
 
-float *retrieve(const char *cmpPath, std::vector<int> &offsets, SZ::Config &conf) {
+float *retrieve(
+    const char *cmpPath,
+    std::vector<int> &offsets,
+    SZ::Config &conf,
+    double &decompress_time,
+    double &lookup_time) {
+    // Start timer
+    SZ::Timer timer(true);
+
     // Decompress data
     float *decData = decompress<float>(cmpPath, conf);
+    double decompress_end_time = timer.stop();
+    decompress_time += decompress_end_time;
 
     // Look up ids from decData using binary search
     float *results = new float[offsets.size()];
     for (int i = 0; i < offsets.size(); i++) {
         results[i] = decData[offsets[i]];
     }
+    lookup_time += timer.stop() - decompress_end_time;
     return results;
 }
 
-float retrieve_single(const char *cmpPath, int offset, SZ::Config &conf) {
+float retrieve_single(const char *cmpPath, int offset, SZ::Config &conf, double &decompress_time, double &lookup_time) {
+    // Start timer
+    SZ::Timer timer(true);
     // Decompress data
     float *decData = decompress<float>(cmpPath, conf);
+    double decompress_end_time = timer.stop();
+    decompress_time += decompress_end_time;
 
     // Look up ids from decData using binary search
-    return decData[offset];
+    float result = decData[offset];
+    lookup_time += timer.stop() - decompress_end_time;
+    return result;
 }
 
 std::vector<int> load_indices(const char *path) {
@@ -105,7 +110,9 @@ void upper_bound(
     std::vector<int> &partitions,
     std::vector<int> &partitionOffsets,
     std::vector<std::string> &colNames,
-    SZ::Config &conf) {
+    SZ::Config &conf,
+    double &decompress_time,
+    double &lookup_time) {
     // For each partition file, decompress it and look up the data, then merge the results
     for (int i = 0; i < partitions.size(); i++) {
         // Get offsets to query for this partition
@@ -118,7 +125,7 @@ void upper_bound(
             int start = index_start[partitionID];
             int end = start + PARTITION_SIZE;
             std::string partionName = cmpFileDir + colName + "-" + std::to_string(start) + "-" + std::to_string(end) + ".sz";
-            row[col] = retrieve_single(partionName.c_str(), offset, conf);
+            row[col] = retrieve_single(partionName.c_str(), offset, conf, decompress_time, lookup_time);
         }
     }
 }
@@ -127,7 +134,9 @@ void lower_bound(
     std::vector<int> &partitions,
     std::vector<int> &partitionOffsets,
     std::vector<std::string> &colNames,
-    SZ::Config &conf) {
+    SZ::Config &conf,
+    double &decompress_time,
+    double &lookup_time) {
     // For lower bound, we assume all ids are in the 1st partition
     int partitionID = partitions[0];
     std::vector<float *> results(NUM_COL);
@@ -137,7 +146,7 @@ void lower_bound(
         int start = index_start[partitionID];
         int end = start + PARTITION_SIZE;
         std::string partionName = cmpFileDir + colName + "-" + std::to_string(start) + "-" + std::to_string(end) + ".sz";
-        float *colValues = retrieve(partionName.c_str(), partitionOffsets, conf);
+        float *colValues = retrieve(partionName.c_str(), partitionOffsets, conf, decompress_time, lookup_time);
         results[col] = colValues;
     }
     // Free memory for results
@@ -171,15 +180,22 @@ int main(int argc, char *argv[]) {
 
     // Get partition file names and ids
     auto [partitions, partitionOffsets] = get_partitions_and_ids(all_ids);
+    double search_time = timer.stop();
 
     // Run query
+    double decompress_time = 0.0;
+    double lookup_time = 0.0;
     if (isUpperBound) {
-        upper_bound(partitions, partitionOffsets, colNames, conf);
+        upper_bound(partitions, partitionOffsets, colNames, conf, decompress_time, lookup_time);
     } else {
-        lower_bound(partitions, partitionOffsets, colNames, conf);
+        lower_bound(partitions, partitionOffsets, colNames, conf, decompress_time, lookup_time);
     }
     // Stop timer and measure overall retrieval time
-    double compress_time = timer.stop();
-    printf("Overall retrieval time = %f seconds.\n", compress_time);
+    double overall_time = timer.stop();
+
+    printf("Search time = %f seconds.\n", search_time);
+    printf("Decompression time = %f seconds.\n", decompress_time);
+    printf("Lookup time = %f seconds.\n", lookup_time);
+    printf("Overall retrieval time = %f seconds.\n", overall_time);
     return 0;
 }
