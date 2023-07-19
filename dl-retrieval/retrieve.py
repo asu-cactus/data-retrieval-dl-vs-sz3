@@ -10,11 +10,12 @@ os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 from compress import PARTITION_SIZE
 from generate_queries import N_QUERIES
 
-BATCH_SIZE = min(PARTITION_SIZE, N_QUERIES)
+BATCH_SIZE = 1000
+# BATCH_SIZE = min(PARTITION_SIZE, N_QUERIES)
 USECOLS = [2, 3, 4, 5, 6]
 MAX_LENGTH = 50
 CHECKPOINT = "checkpoint-16984000"
-# device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device("cpu")
 
 
@@ -62,7 +63,7 @@ def retrieve(prompts):
 
         # Decode
         predictions = tokenizer.batch_decode(outputs, skip_special_tokens=False)
-        decode_end_time = time.time()
+        # decode_end_time = time.time()
 
         # Parse results
         results = [
@@ -90,13 +91,13 @@ def retrieve(prompts):
         # Update times
         encode_time += encode_end_time - start_time
         inference_time += inference_end_time - encode_end_time
-        decode_time += decode_end_time - inference_end_time
-        parse_time += parse_end_time - decode_end_time
+        # decode_time += decode_end_time - inference_end_time
+        parse_time += parse_end_time - inference_end_time
 
     # Print results
     print(f"Encode time: {encode_time}s")
     print(f"Inference time: {inference_time}s")
-    print(f"Decode time: {decode_time}s")
+    # print(f"Decode time: {decode_time}s")
     print(f"Parse time: {parse_time}s")
     oveall_time = encode_time + inference_time + decode_time + parse_time
     print(f"Overall time elapsed: {oveall_time}s")

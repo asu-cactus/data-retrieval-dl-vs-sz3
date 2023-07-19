@@ -1,5 +1,8 @@
 import numpy as np
+import secrets
 from pathlib import Path
+
+seed = secrets.randbits(2)
 
 from compress import PARTITION_SIZE
 
@@ -15,20 +18,42 @@ def write_indices(indices, filename):
             f.write(f"{index}\n")
 
 
-def lower_bound():
-    indices = np.random.randint(PARTITION_SIZE, size=N_QUERIES)
+def lower_bound(rng):
+    indices = rng.integer(0, PARTITION_SIZE, size=N_QUERIES)
     write_indices(indices, f"{OUTPUT_DIR}/lower_bound.txt")
 
 
-def upper_bound():
+def upper_bound(rng):
     indices = np.empty(N_QUERIES, dtype=np.int32)
     for i in range(N_QUERIES):
-        start = (i * PARTITION_SIZE) % N_ROWS
-        end = start + PARTITION_SIZE
-        indices[i] = np.random.randint(start, end)
+        low = (i * PARTITION_SIZE) % N_ROWS
+        high = low + PARTITION_SIZE
+        indices[i] = rng.integer(low, high)
     write_indices(indices, f"{OUTPUT_DIR}/upper_bound.txt")
 
 
+def row_level_randomness(rng, mean, std):
+    indices = []
+    length = 0
+    while length < N_QUERIES:
+        n_rows_this_query = max(1, round(rng.normal(mean, std)))
+        if length + n_rows_this_query >= N_QUERIES:
+            n_rows_this_query = N_QUERIES - length
+        length += n_rows_this_query
+
+        indices.append(np.sort(rng.integers(0, N_ROWS, size=n_rows_this_query)))
+    # Concatenate all indices as a single array
+    indices = np.concatenate(indices)
+    write_indices(indices, f"{OUTPUT_DIR}/row_level_{mean}_{std}.txt")
+
+
+def block_level_randomness(rng, mean, std):
+    indices = []
+    length = 0
+
+
 if __name__ == "__main__":
-    lower_bound()
-    upper_bound()
+    rng = np.random.default_rng(seed)
+    # lower_bound()
+    # upper_bound()
+    row_level_randomness(rng, 50, 20)
