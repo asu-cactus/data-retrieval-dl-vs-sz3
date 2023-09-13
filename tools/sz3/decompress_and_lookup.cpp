@@ -2,6 +2,10 @@
 
 std::vector<int> load_indices(const char *path) {
     std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cout << "Failed to open file: " << path << std::endl;
+        exit(1);
+    }
     std::string str;
     std::vector<int> indices;
     while (std::getline(file, str)) {
@@ -223,7 +227,7 @@ int main(int argc, char *argv[]) {
     // Stop timer and measure overall retrieval time
     double overall_time = timer.stop();
 
-    std::cout << "Cache misses: " << cache.get_cache_misses() << "\n";
+    printf("Cache miss rate: %d.\n", cache.get_cache_misses());
     printf("Search time = %f seconds.\n", search_time);
     printf("Decompression time = %f seconds.\n", decompress_time);
     printf("Access time = %f seconds.\n", access_time);

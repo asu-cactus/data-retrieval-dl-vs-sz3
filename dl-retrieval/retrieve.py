@@ -57,7 +57,7 @@ def retrieve(prompts):
         encode_end_time = time.time()
 
         # Inference
-        max_new_tokens = MAX_LENGTH + 10
+        max_new_tokens = MAX_LENGTH
         outputs = model.generate(inputs, max_new_tokens=max_new_tokens, do_sample=False)
         inference_end_time = time.time()
 

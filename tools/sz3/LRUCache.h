@@ -7,7 +7,7 @@ constexpr int NUM_PARTITION = 10;
 constexpr int NUM_COL = 5;
 constexpr int PARTITION_SIZE = 200000;
 const std::vector<int> PARTITION_END_IDX = {200000, 400000, 600000, 800000, 1000000, 1200000, 1400000, 1600000, 1800000, 2000000};
-const std::string cmpFileDir = "../../../dl-retrieval/outputs/compressed_files/";
+const std::string cmpFileDir = "../../../dl-retrieval/outputs/sz_compressed_files/";
 const std::string indiceDir = "../../../dl-retrieval/outputs/indices/";
 std::vector<std::string> colNames = {"dst", "hist", "enumber", "etime", "rnumber"};
 
@@ -35,6 +35,7 @@ class LRUCache {
     int get_cache_misses() {
         return cache_misses;
     }
+
     // This function returns false if key is not
     // present in cache. Else it moves the key to
     // front by first removing it and then adding
