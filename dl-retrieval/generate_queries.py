@@ -19,7 +19,7 @@ def write_indices(indices, filename):
 
 
 def lower_bound(rng):
-    indices = rng.integer(0, PARTITION_SIZE, size=N_QUERIES)
+    indices = rng.integers(0, PARTITION_SIZE, size=N_QUERIES)
     write_indices(indices, f"{OUTPUT_DIR}/lower_bound.txt")
 
 
@@ -28,7 +28,7 @@ def upper_bound(rng):
     for i in range(N_QUERIES):
         low = (i * PARTITION_SIZE) % N_ROWS
         high = low + PARTITION_SIZE
-        indices[i] = rng.integer(low, high)
+        indices[i] = rng.integers(low, high)
     write_indices(indices, f"{OUTPUT_DIR}/upper_bound.txt")
 
 
@@ -54,6 +54,6 @@ def block_level_randomness(rng, mean, std):
 
 if __name__ == "__main__":
     rng = np.random.default_rng(seed)
-    # lower_bound()
-    # upper_bound()
+    # lower_bound(rng)
+    # upper_bound(rng)
     row_level_randomness(rng, 50, 20)
