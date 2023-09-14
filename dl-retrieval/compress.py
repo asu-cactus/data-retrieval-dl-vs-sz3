@@ -5,7 +5,8 @@ import zstd
 import time
 import os
 
-os.environ["ZSTD_NUMTHREADS"] = "1"
+# os.environ["ZSTD_NUMTHREADS"] = "1"
+
 # Remember to include "sz3_api" folder in LD_LIBRARY_PATH by running:
 # export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/your/custom/path/
 from sz3_api.pysz import SZ
@@ -19,7 +20,6 @@ names = {
     "etime": np.float32,
     "rnumber": np.int32,
 }
-OUTPUT_DIR = "outputs/zstd_compressed_files"
 
 
 def load_data():
@@ -42,7 +42,7 @@ def compress_partitions_with_sz3(df):
             col_partition = df[col][i : i + PARTITION_SIZE].to_numpy()
             compressed, _ = sz.compress(col_partition, 1, 0, 1e-4, 0)
 
-            with open(f"{OUTPUT_DIR}/{col}-{i}-{i+len(col_partition)}.sz", "wb") as f:
+            with open(f"outputs/sz_compressed_files/{col}-{i}-{i+len(col_partition)}.sz", "wb") as f:
                 f.write(compressed)
 
 
@@ -58,7 +58,7 @@ def compress_partitions_with_zstd(df):
             start_time = time.time()
             zstd.decompress(compressed)
             decompression_time += time.time() - start_time
-            with open(f"{OUTPUT_DIR}/{col}-{i}-{i+len(col_partition)}.zst", "wb") as f:
+            with open(f"outputs/zstd_compressed_files/{col}-{i}-{i+len(col_partition)}.zst", "wb") as f:
                 f.write(compressed)
     print(f"Decompression time: {decompression_time*200}")
 
@@ -72,9 +72,8 @@ def compress_index():
     for i in range(0, total_size, PARTITION_SIZE):
         index_partition = index[i : i + PARTITION_SIZE]
         compressed, _ = sz.compress(index_partition, 1, 0, 1e-4, 0)
-        with open(f"{OUTPUT_DIR}/index-{i}-{i+len(index_partition)}.sz", "wb") as f:
+        with open(f"outputs/sz_compressed_files/index-{i}-{i+len(index_partition)}.sz", "wb") as f:
             f.write(compressed)
-
 
 # def decompress_with_zstd(num_decompression=200):
 #     total_size = 2_000_000
@@ -94,13 +93,15 @@ def compress_index():
 
 if __name__ == "__main__":
     # Make output directory
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    Path("outputs/sz_compressed_files").mkdir(parents=True, exist_ok=True)
+    Path("outputs/zstd_compressed_files").mkdir(parents=True, exist_ok=True)
 
     # Compression
     df = load_data()
-    # compress_partitions_with_sz3(df)
+    compress_partitions_with_sz3(df)
     # compress_index()
 
-    compress_partitions_with_zstd(df)
+    # compress_partitions_with_zstd(df)
 
     # decompress_with_zstd(num_decompression=200)
+
