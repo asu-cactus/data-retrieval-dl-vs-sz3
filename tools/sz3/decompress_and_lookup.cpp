@@ -40,7 +40,7 @@ std::pair<std::vector<int>, std::vector<int>> get_partitions_and_ids(std::vector
     return std::make_pair(partitionIds, partitionOffsets);
 }
 
-float *retrieve(
+std::vector<float> retrieve(
     const char *cmpPath,
     std::vector<int> &offsets,
     SZ::Config &conf,
@@ -55,7 +55,9 @@ float *retrieve(
     decompress_time += decompress_end_time;
 
     // Look up ids from decData using binary search
-    float *results = new float[offsets.size()];
+    std::vector<float> results;
+    results.reserve(offsets.size());
+    // float *results = new float[offsets.size()];
     for (int i = 0; i < offsets.size(); i++) {
         results[i] = decData[offsets[i]];
     }
@@ -118,7 +120,7 @@ void lower_bound(
     double &access_time) {
     // For lower bound, we assume all ids are in the 1st partition
     int partitionID = partitions[0];
-    std::vector<float *> results;
+    std::vector<std::vector<float>> results;
     results.reserve(NUM_COL);
     // Decompress and look up data for each column
     for (int col = 0; col < NUM_COL; ++col) {
@@ -126,13 +128,13 @@ void lower_bound(
         int end = PARTITION_END_IDX[partitionID];
         int start = end - PARTITION_SIZE;
         std::string partionName = cmpFileDir + colName + "-" + std::to_string(start) + "-" + std::to_string(end) + ".sz";
-        float *colValues = retrieve(partionName.c_str(), partitionOffsets, conf, decompress_time, access_time);
+        std::vector<float> colValues = retrieve(partionName.c_str(), partitionOffsets, conf, decompress_time, access_time);
         results.emplace_back(colValues);
     }
-    // Clean up results
-    for (float *result : results) {
-        delete[] result;
-    }
+    // // Clean up results
+    // for (float *result : results) {
+    //     delete[] result;
+    // }
 }
 
 std::vector<std::pair<int, int>> get_end_offsets(std::vector<int> &partitions) {
@@ -176,10 +178,12 @@ void general_query(
 
         // Access data
         timer.start();
-        std::vector<float *> results;
+        std::vector<std::vector<float>> results;
         results.reserve(NUM_COL);
         for (std::vector<float> colValues : data) {
-            float *result = new float[end_index - start_index + 1];
+            std::vector<float> result;
+            result.reserve(end_index - start_index + 1);
+            // float *result = new float[end_index - start_index + 1];
             for (int i = start_index; i <= end_index; ++i) {
                 result[i - start_index] = colValues[partitionOffsets[i]];
             }
@@ -188,10 +192,10 @@ void general_query(
         start_index = end_index;
         access_time += timer.stop();
 
-        // Free memory for results
-        for (float *result : results) {
-            delete[] result;
-        }
+        // // Free memory for results
+        // for (float *result : results) {
+        //     delete[] result;
+        // }
     }
 }
 
