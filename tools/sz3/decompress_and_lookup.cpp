@@ -50,7 +50,7 @@ float *retrieve(
     SZ::Timer timer(true);
 
     // Decompress data
-    float *decData = decompress<float>(cmpPath, conf);
+    std::vector<float> decData = decompress<float>(cmpPath, conf);
     double decompress_end_time = timer.stop();
     decompress_time += decompress_end_time;
 
@@ -60,7 +60,7 @@ float *retrieve(
         results[i] = decData[offsets[i]];
     }
     access_time += timer.stop() - decompress_end_time;
-    delete[] decData;
+    // delete[] decData;
     return results;
 }
 
@@ -73,14 +73,14 @@ float retrieve_single(
     // Start timer
     SZ::Timer timer(true);
     // Decompress data
-    float *decData = decompress<float>(cmpPath, conf);
+    std::vector<float> decData = decompress<float>(cmpPath, conf);
     double decompress_end_time = timer.stop();
     decompress_time += decompress_end_time;
 
     // Look up ids from decData using binary search
     float result = decData[offset];
     access_time += timer.stop() - decompress_end_time;
-    delete[] decData;
+    // delete[] decData;
     return result;
 }
 
@@ -171,14 +171,14 @@ void general_query(
 
         // Obtain data from cache that may involve decompression
         SZ::Timer timer(true);
-        std::vector<float *> data = cache.refer(partitionID);
+        std::vector<std::vector<float>> data = cache.refer(partitionID);
         decompress_time += timer.stop();
 
         // Access data
         timer.start();
         std::vector<float *> results;
         results.reserve(NUM_COL);
-        for (float *colValues : data) {
+        for (std::vector<float> colValues : data) {
             float *result = new float[end_index - start_index + 1];
             for (int i = start_index; i <= end_index; ++i) {
                 result[i - start_index] = colValues[partitionOffsets[i]];
